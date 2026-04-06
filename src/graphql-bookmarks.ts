@@ -3,7 +3,7 @@ import { ensureDataDir, twitterBookmarksCachePath, twitterBookmarksMetaPath, twi
 import { loadChromeSessionConfig } from './config.js';
 import { extractChromeXCookies } from './chrome-cookies.js';
 import type { BookmarkBackfillState, BookmarkCacheMeta, BookmarkRecord, QuotedTweetSnapshot } from './types.js';
-import { exportBookmarksForSyncSeed, updateQuotedTweets, updateBookmarkedAt } from './bookmarks-db.js';
+import { exportBookmarksForSyncSeed, updateQuotedTweets } from './bookmarks-db.js';
 
 const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36';
 

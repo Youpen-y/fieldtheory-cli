@@ -800,25 +800,6 @@ export async function updateQuotedTweets(
   }
 }
 
-export async function updateBookmarkedAt(
-  records: Array<{ id: string; bookmarkedAt: string }>,
-): Promise<void> {
-  const dbPath = twitterBookmarksIndexPath();
-  const db = await openDb(dbPath);
-  ensureMigrations(db);
-
-  try {
-    const stmt = db.prepare('UPDATE bookmarks SET bookmarked_at = ? WHERE id = ?');
-    for (const record of records) {
-      stmt.run([record.bookmarkedAt, record.id]);
-    }
-    stmt.free();
-    saveDb(db, dbPath);
-  } finally {
-    db.close();
-  }
-}
-
 export function formatSearchResults(results: SearchResult[]): string {
   if (results.length === 0) return 'No results found.';
 
