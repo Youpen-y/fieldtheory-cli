@@ -13,7 +13,7 @@ function firefoxBaseDir(): string {
   if (os === 'darwin') return join(home, 'Library', 'Application Support', 'Firefox');
   if (os === 'linux') return join(home, '.mozilla', 'firefox');
   throw new Error(
-    `Firefox cookie extraction is not yet supported on ${os}.\n` +
+    `Firefox cookie extraction is currently supported on macOS and Linux only (detected: ${os}).\n` +
     'Pass cookies manually:  ft sync --cookies <ct0> <auth_token>'
   );
 }

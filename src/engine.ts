@@ -6,6 +6,8 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 import { loadPreferences, savePreferences } from './preferences.js';
 
 // ── Engine registry ────────────────────────────────────────────────────
@@ -25,17 +27,42 @@ const PREFERENCE_ORDER = ['claude', 'codex'];
 
 // ── Detection ──────────────────────────────────────────────────────────
 
-function isOnPath(bin: string): boolean {
-  try {
-    execFileSync('which', [bin], { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
-  }
+export function hasCommandOnPath(
+  bin: string,
+  env: NodeJS.ProcessEnv = process.env,
+  platform = process.platform,
+): boolean {
+  const searchPath = env.PATH ?? '';
+  const pathDirs = searchPath.split(path.delimiter).filter(Boolean);
+  const pathext = (env.PATHEXT ?? '.EXE;.CMD;.BAT;.COM')
+    .split(';')
+    .map((ext) => ext.trim())
+    .filter(Boolean);
+
+  const hasPathSeparator = /[\\/]/.test(bin);
+  const baseCandidates = hasPathSeparator
+    ? [bin]
+    : pathDirs.map((dir) => path.join(dir, bin));
+  const candidates = platform === 'win32'
+    ? baseCandidates.flatMap((candidate) => {
+        if (path.extname(candidate)) return [candidate];
+        return pathext.map((ext) => `${candidate}${ext}`);
+      })
+    : baseCandidates;
+
+  return candidates.some((candidate) => {
+    try {
+      if (platform === 'win32') return fs.statSync(candidate).isFile();
+      fs.accessSync(candidate, fs.constants.X_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  });
 }
 
 export function detectAvailableEngines(): string[] {
-  return PREFERENCE_ORDER.filter((name) => isOnPath(KNOWN_ENGINES[name].bin));
+  return PREFERENCE_ORDER.filter((name) => hasCommandOnPath(KNOWN_ENGINES[name].bin));
 }
 
 // ── Interactive prompt ─────────────────────────────────────────────────

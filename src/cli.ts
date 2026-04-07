@@ -66,11 +66,15 @@ function createSpinner(renderLine: () => string): { update: () => void; stop: ()
   };
 }
 
-function renderProgress(status: SyncProgress, startTime: number): void {
-  const elapsed = Math.round((Date.now() - startTime) / 1000);
-  const spin = SPINNER[spinnerIdx++ % SPINNER.length];
-  const line = `  ${spin} Syncing bookmarks...  ${status.newAdded} new  \u2502  page ${status.page}  \u2502  ${elapsed}s`;
-  process.stderr.write(`\r\x1b[K${line}`);
+export async function runWithSpinner<T>(
+  spinner: { stop: () => void },
+  fn: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await fn();
+  } finally {
+    spinner.stop();
+  }
 }
 
 const FRIENDLY_STOP_REASONS: Record<string, string> = {
@@ -219,7 +223,7 @@ export function showWelcome(): void {
     1. Open your browser and log into x.com
     2. Run: ft sync
 
-  Works with Chrome, Brave, Firefox, and other browsers.
+  Works with Chrome, Brave, Chromium, and Firefox on macOS/Linux.
   Data will be stored at: ${dataDir()}
 `);
 }
@@ -276,8 +280,10 @@ function showSyncWelcome(): void {
   Your browser session is used to authenticate \u2014 no passwords
   are stored or transmitted.
 
-  Supported browsers: ${browsers}
-  Use --browser <name> to choose (default: auto-detect).
+  Browser ids: ${browsers}
+  Use --browser <name> to choose.
+  Default auto-detect prefers installed Chrome-family browsers.
+  Firefox cookie extraction currently works on macOS and Linux.
 `);
 }
 
@@ -396,7 +402,7 @@ export function buildCli() {
     .option('--target-adds <n>', 'Stop after N new bookmarks', (v: string) => Number(v))
     .option('--delay-ms <n>', 'Delay between requests in ms', (v: string) => Number(v), 600)
     .option('--max-minutes <n>', 'Max runtime in minutes', (v: string) => Number(v), 30)
-    .option('--browser <name>', 'Browser to read session from (chrome, brave, firefox, ...)')
+    .option('--browser <name>', 'Browser to read session from (chrome, chromium, brave, firefox, ...)')
     .option('--cookies <values...>', 'Pass ct0 and auth_token directly (skips browser extraction)')
     .option('--chrome-user-data-dir <path>', 'Chrome-family user-data directory')
     .option('--chrome-profile-directory <name>', 'Chrome-family profile name')
@@ -424,14 +430,13 @@ export function buildCli() {
             const elapsed = Math.round((Date.now() - startTime) / 1000);
             return `${p.done}/${p.total} (${pct}%) \u2502 ${p.quotedFetched} quoted \u2502 ${p.textExpanded} expanded \u2502 ${p.failed} failed \u2502 ${elapsed}s`;
           });
-          const result = await syncGaps({
+          const result = await runWithSpinner(spinner, () => syncGaps({
             delayMs: Number(options.delayMs) || 300,
             onProgress: (progress: GapFillProgress) => {
               lastProgress = progress;
               spinner.update();
             },
-          });
-          spinner.stop();
+          }));
           if (result.total === 0) {
             console.log('  No gaps found \u2014 all bookmarks are fully enriched.');
           } else {
@@ -518,7 +523,7 @@ export function buildCli() {
             cookieHeader = parts.join('; ');
           }
 
-          const result = await syncBookmarksGraphQL({
+          const result = await runWithSpinner(spinner, () => syncBookmarksGraphQL({
             incremental: !Boolean(options.rebuild),
             maxPages: Number(options.maxPages) || 500,
             targetAdds: typeof options.targetAdds === 'number' && !Number.isNaN(options.targetAdds) ? options.targetAdds : undefined,
@@ -533,9 +538,8 @@ export function buildCli() {
             onProgress: (status: SyncProgress) => {
               lastSync = status;
               spinner.update();
-              if (status.done) spinner.stop();
             },
-          });
+          }));
 
           console.log(`\n  \u2713 ${result.added} new bookmarks synced (${result.totalBookmarks} total)`);
           console.log(`  ${friendlyStopReason(result.stopReason)}`);
