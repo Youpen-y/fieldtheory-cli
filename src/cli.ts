@@ -115,14 +115,62 @@ async function checkForUpdate(): Promise<void> {
   } catch { /* network error, offline, etc — silently skip */ }
 }
 
-const LOGO = `
+// ── What's new ────────────────────────────────────────────────────────────
+
+const WHATS_NEW: Record<string, string[]> = {
+  '1.3.0': [
+    'ft sync --gaps \u2014 backfill missing quoted tweets for existing bookmarks',
+    'Quoted tweet content now captured automatically during sync',
+    'Bookmark date (when you bookmarked, not just when it was posted) now tracked',
+    'ft sync --rebuild replaces --full',
+    'Update notifications when a new version is available',
+  ],
+};
+
+function showWhatsNew(): void {
+  const version = getLocalVersion();
+  const versionFile = path.join(dataDir(), '.last-version');
+
+  let lastSeen: string | undefined;
+  try { lastSeen = fs.readFileSync(versionFile, 'utf-8').trim(); } catch { /* first run */ }
+
+  // Update the stored version
+  try { fs.writeFileSync(versionFile, version); } catch { /* read-only, etc */ }
+
+  if (!lastSeen || lastSeen === version) return;
+
+  // Collect features from all versions newer than lastSeen
+  const newFeatures: string[] = [];
+  for (const [v, features] of Object.entries(WHATS_NEW)) {
+    if (compareVersions(v, lastSeen) > 0 && compareVersions(v, version) <= 0) {
+      newFeatures.push(...features);
+    }
+  }
+
+  if (newFeatures.length === 0) return;
+
+  console.log(`\n  \x1b[1mWhat's new in v${version}:\x1b[0m`);
+  for (const feature of newFeatures) {
+    console.log(`    \u2022 ${feature}`);
+  }
+  console.log();
+}
+
+function logo(): string {
+  const v = getLocalVersion();
+  const vLabel = `v${v}`;
+  // Right-align version inside the box (29 chars inner width)
+  const line2Content = `  \x1b[2mfieldtheory.dev/cli\x1b[0m`;
+  const vPad = 29 - 'fieldtheory.dev/cli'.length - vLabel.length - 2;
+  return `
    \x1b[2m\u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510\x1b[0m
    \x1b[2m\u2502\x1b[0m  \x1b[1mF i e l d   T h e o r y\x1b[0m    \x1b[2m\u2502\x1b[0m
-   \x1b[2m\u2502\x1b[0m  \x1b[2mfieldtheory.dev/cli\x1b[0m        \x1b[2m\u2502\x1b[0m
+   \x1b[2m\u2502\x1b[0m${line2Content}${' '.repeat(Math.max(vPad, 1))}\x1b[2m${vLabel}\x1b[0m \x1b[2m\u2502\x1b[0m
    \x1b[2m\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518\x1b[0m`;
+}
 
 export function showWelcome(): void {
-  console.log(LOGO);
+  console.log(logo());
   console.log(`
   Save a local copy of your X/Twitter bookmarks. Search them,
   classify them, and make them available to any AI agent.
@@ -138,7 +186,7 @@ export function showWelcome(): void {
 }
 
 export async function showDashboard(): Promise<void> {
-  console.log(LOGO);
+  console.log(logo());
   try {
     const view = await getBookmarkStatusView();
     const ago = view.lastUpdated ? timeAgo(view.lastUpdated) : 'never';
@@ -283,7 +331,8 @@ export function buildCli() {
     .version('1.2.1')
     .showHelpAfterError()
     .hook('preAction', () => {
-      console.log(LOGO);
+      console.log(logo());
+      showWhatsNew();
     });
 
   // ── sync ────────────────────────────────────────────────────────────────
