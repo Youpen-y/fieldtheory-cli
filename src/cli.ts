@@ -132,33 +132,43 @@ export function compareVersions(a: string, b: string): number {
 async function checkForUpdate(): Promise<void> {
   try {
     const cacheFile = path.join(dataDir(), '.update-check');
-    // Skip if checked recently
+    // Re-fetch from npm if cache is stale (>24hr)
+    let needsFetch = true;
     try {
       const stat = fs.statSync(cacheFile);
-      if (Date.now() - stat.mtimeMs < UPDATE_CHECK_INTERVAL_MS) return;
-    } catch { /* file doesn't exist, proceed */ }
+      if (Date.now() - stat.mtimeMs < UPDATE_CHECK_INTERVAL_MS) needsFetch = false;
+    } catch { /* file doesn't exist, fetch */ }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch('https://registry.npmjs.org/fieldtheory/latest', {
-      signal: controller.signal,
-      headers: { accept: 'application/json' },
-    });
-    clearTimeout(timeout);
+    if (needsFetch) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      const res = await fetch('https://registry.npmjs.org/fieldtheory/latest', {
+        signal: controller.signal,
+        headers: { accept: 'application/json' },
+      });
+      clearTimeout(timeout);
 
-    if (!res.ok) return;
-    const data = await res.json() as any;
-    const latest = data?.version;
-    if (!latest) return;
+      if (res.ok) {
+        const data = await res.json() as any;
+        if (data?.version) fs.writeFileSync(cacheFile, data.version);
+      }
+    }
 
-    // Touch the cache file regardless of result
-    fs.writeFileSync(cacheFile, latest);
+    // Always show notice from cache
+    showCachedUpdateNotice();
+  } catch { /* network error, offline, etc — silently skip */ }
+}
 
+/** Sync version — reads cached check result. Used after help output where we can't await. */
+function showCachedUpdateNotice(): void {
+  try {
+    const cacheFile = path.join(dataDir(), '.update-check');
+    const latest = fs.readFileSync(cacheFile, 'utf-8').trim();
     const local = getLocalVersion();
-    if (compareVersions(latest, local) > 0) {
+    if (latest && compareVersions(latest, local) > 0) {
       console.log(`\n  \u2728 Update available: ${local} \u2192 ${latest}  \u2014  npm update -g fieldtheory`);
     }
-  } catch { /* network error, offline, etc — silently skip */ }
+  } catch { /* no cache yet, skip */ }
 }
 
 // ── What's new ────────────────────────────────────────────────────────────
@@ -574,7 +584,6 @@ export function buildCli() {
           console.log(`  explore your bookmarks. It already knows how.\n`);
         }
 
-        await checkForUpdate();
       } catch (err) {
         const msg = (err as Error).message;
         if (firstRun && (msg.includes('cookie') || msg.includes('Cookie') || msg.includes('Keychain') || msg.includes('Safe Storage'))) {
@@ -1153,9 +1162,13 @@ export function buildCli() {
     await program.parseAsync(args);
   });
 
+  program.on('afterHelp', showCachedUpdateNotice);
+
   return program;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  await buildCli().parseAsync(process.argv);
+  const program = buildCli();
+  program.hook('postAction', async () => { await checkForUpdate(); });
+  await program.parseAsync(process.argv);
 }
